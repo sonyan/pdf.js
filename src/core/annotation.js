@@ -47,6 +47,7 @@ var warn = sharedUtil.warn;
 var Dict = corePrimitives.Dict;
 var isDict = corePrimitives.isDict;
 var isName = corePrimitives.isName;
+var isRef = corePrimitives.isRef;
 var Stream = coreStream.Stream;
 var ColorSpace = coreColorSpace.ColorSpace;
 var ObjectLoader = coreObj.ObjectLoader;
@@ -169,6 +170,9 @@ var Annotation = (function AnnotationClosure() {
 
   function Annotation(params) {
     var dict = params.dict;
+    var actionProperty;
+    var jsFlateStream;
+    var jsString;
 
     this.setFlags(dict.get('F'));
     this.setRectangle(dict.get('Rect'));
@@ -185,6 +189,23 @@ var Annotation = (function AnnotationClosure() {
     this.data.color = this.color;
     this.data.borderStyle = this.borderStyle;
     this.data.hasAppearance = !!this.appearance;
+
+    // include action dictionary in annotation if exist
+    actionProperty = dict.get('A');
+    if(actionProperty) {
+      this.data.A = {
+        S: actionProperty.get('S').name
+      };
+      if(actionProperty.has('T')) {
+        this.data.A.T = actionProperty.get('T');
+      }
+      jsFlateStream = actionProperty.get('JS');
+      if(jsFlateStream) {
+        jsString = sharedUtil.stringToPDFString(sharedUtil.bytesToString(jsFlateStream.getBytes()));
+        this.data.A.JS = jsString;
+      }
+    }
+    console.log(this.data);
   }
 
   Annotation.prototype = {
@@ -584,6 +605,7 @@ var WidgetAnnotation = (function WidgetAnnotationClosure() {
     var dict = params.dict;
     var data = this.data;
 
+    //data.action = dict.get('A');
     data.annotationType = AnnotationType.WIDGET;
     data.fieldValue = stringToPDFString(
       Util.getInheritableProperty(dict, 'V') || '');
