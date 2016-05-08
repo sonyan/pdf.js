@@ -304,11 +304,12 @@ var Page = (function PageClosure() {
       var annotationsData = [];
       for (var i = 0, n = annotations.length; i < n; ++i) {
         if (intent) {
-          if (!(intent === 'display' && annotations[i].viewable) &&
+          if (!(intent === 'display' /*&& annotations[i].viewable*/) &&
               !(intent === 'print' && annotations[i].printable)) {
             continue;
           }
         }
+        annotations[i].data.hiddenField = !annotations[i].viewable;
         annotationsData.push(annotations[i].data);
       }
       return annotationsData;

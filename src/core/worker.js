@@ -752,6 +752,38 @@ var WorkerMessageHandler = PDFJS.WorkerMessageHandler = {
       });
     });
 
+    handler.on('GetPageActions', function wphTriggerOpenActionOnPage(data) {
+      return pdfManager.getPage(data.pageIndex).then(function(page) {
+        var AA = page.pageDict.get('AA');
+        var O,C, OpenActionScript, CloseActionScript;
+        var actions = {};
+        if(AA) {
+          O = AA.get('O');
+          C = AA.get('C');
+          if(O) {
+            actions.O = {
+              S: O.get('S').name
+            };
+            OpenActionScript = O.get('JS');
+            if(OpenActionScript) {
+              actions.O.JS = OpenActionScript;
+            }
+          }
+
+          if(C) {
+            actions.C = {
+              S: C.get('S').name
+            };
+            CloseActionScript = C.get('JS');
+            if(CloseActionScript) {
+              actions.C.JS = CloseActionScript;
+            }
+          }
+        }
+        return actions;
+      });
+    });
+
     handler.on('GetPageIndex', function wphSetupGetPageIndex(data) {
       var ref = new Ref(data.ref.num, data.ref.gen);
       var catalog = pdfManager.pdfDocument.catalog;

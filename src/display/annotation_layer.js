@@ -28,6 +28,27 @@
 	}
 }(this, function (exports, sharedUtil, displayDOMUtils) {
 
+
+/* InputCreateParameters
+   @isHidden: indicates if the form element in question is a hidden field. Defaults to false.
+	 @backgroundColor: background color for the container element. Defaults to white. 
+	 @scale: the desired scale of the container. Defaults to 1.
+ 	 parameter structure for creating the container that holds the input form elements 
+*/
+/**
+ * @typedef {Object} InputCreateParameters
+ * @property {boolean} isHidden
+ * @property {string} backgroundColor
+ * @property {number} scale
+ */
+function InputCreateParameters(isHidden, backgroundColor, scale){
+	return {
+		isHidden: isHidden || false,
+		backgroundColor: backgroundColor || 'RGB(255,255,255)',
+		scale: 'scale(1)' || 'scale(' + scale + ')'
+	}
+};
+
 var AnnotationBorderStyleType = sharedUtil.AnnotationBorderStyleType;
 var AnnotationType = sharedUtil.AnnotationType;
 var Util = sharedUtil.Util;
@@ -184,7 +205,7 @@ var AnnotationElement = (function AnnotationElementClosure() {
 					default:
 						break;
 				}
-
+				
 				if (data.color) {
 					container.style.borderColor =
 						Util.makeCssRgb(data.color[0] | 0,
@@ -359,7 +380,6 @@ var TextAnnotationElement = (function TextAnnotationElementClosure() {
 		 */
 		render: function TextAnnotationElement_render() {
 			this.container.className = 'textAnnotation';
-
 			var image = document.createElement('img');
 			image.style.height = this.container.style.height;
 			image.style.width = this.container.style.width;
@@ -405,26 +425,29 @@ var WidgetAnnotationElement = (function WidgetAnnotationElementClosure() {
 			var content;
 			var fieldType = this.data.fieldType;
 			var fieldFlags = this.data.fieldFlags;
-
+			
+			this._injectCommonScripts();
+			
 			if(fieldType == 'Tx' && !this.data.paperMetaData) {// PaperMetaData means a qrcode, datamatrix or similar... ignored
 				content = this._createInputTextElement();
 			} else if(fieldType == 'Btn') {
 				if ((fieldFlags & 32768) || (fieldFlags & 49152)) {
 					content = this._createRadioButtonElement(); //radio button
-				}
-				else if (fieldFlags & 65536) {
+				} else if (fieldFlags & 65536) {
 					content = this._createPushButtonElement(); //push button
-				}
-				else {
+				} else {
 					content = this._createCheckboxElement();  //checkbox
 				}
-			} else if(fieldType == 'Ch') {
+			} else if(fieldType == 'Ch') { // choice
 				content = this._createDropdownElement();
+			} else if(fieldType == 'Sig') {
+				content = this._createSignatureElement();
 			} else {
 				content = this._createDefaultContent();
 			}
-
+						
 			this.container.appendChild(content);
+			
 			return this.container;
 		},
 
@@ -441,43 +464,290 @@ var WidgetAnnotationElement = (function WidgetAnnotationElementClosure() {
 		},
 
 		_createInputTextElement: function() {
-			var inputText = document.createElement('input');
-			inputText.type = 'text';
-			inputText.id = this.data.fullName;
-			inputText.value = this.data.fieldValue;
-			inputText.style.padding = '0';
-			inputText.style.margin = '0';
-			inputText.style.border = '1px solid #E6E6E6';
-			inputText.style.display = 'block';
-			this._setDimension(inputText);
-			this._setTextStyle(inputText);
+			var control;
+			var parameters = new InputCreateParameters(false, 'transparent', 1) ;
+			
+			var container = this._createInputContainer(parameters);
+			container.style.transform = 'scale(1)';
+			if (this.data.multiLine && this.data.hasAppearance) {
+				control = document.createElement('textarea');
+				control.style.resize = "none";
+				// if(!this.data.hasAppearance){
+				// 	control.style.display = 'none';
+				// }
+			} else {
+				control = document.createElement('input');
+				if (this.data.fileUpload) {
+					control.type='file';
+				} else if (this.data.password) {
+					control.type='password';
+				}else if (!this.data.hasAppearance){
+					control.type = 'text';
+				//}else if(this.data.op)
+				} else {
+					control.type='text';
+				}
+			}
 
-			return inputText;
+			control.id = this.data.fullName;
+			control.name = this.data.fullName;
+			control.value = this.data.fieldValue;
+			this._setTextStyle(control);
+			this._setDimension(control);
+			
+			if(!this.data.hasAppearance && this.data.hiddenField){
+				control.style.display = 'none';
+				//container.style.display = 'none';
+			}else{
+				container.style.display = 'block';
+			}
+			if (this.data.maxlen) {
+				control.maxLength = this.data.maxlen; // not currently support
+			}
+			if (this.data.readOnly) {
+				control.readOnly = true;
+				control.style.cursor = "not-allowed";
+			}
+
+			// execute any action javascript
+			this._applyActionScripts(control);
+			
+			
+			container.appendChild(control);
+			return container;
 		},
-
+		parseInputName: function(n){
+                var name = '';
+                var dot = n.indexOf('.');
+                if(dot >= 0){
+                    name = n.substring(0, dot);
+                }
+                name = name.split(' ').join(' ', '_');
+                
+                return name;
+            },
+	 
+	  _createInputContainer: function(parameters){
+			
+			var transform = '1.1';
+			var container = document.createElement('div');
+			this._setDimension(container);
+			container.style.backgroundColor = parameters.backgroundColor;
+			container.style.transform = parameters.scale;
+			
+			container.style['-webkit-transform'] = parameters.scale;  /* Saf3.1+, Chrome */
+     container.style['-moz-transform'] = parameters.scale; /* FF3.5+ */
+		 container.style['-ms-transform'] = parameters.scale; /* IE9 */
+		 container.style['-o-transform'] = parameters.scale; /* Opera 10.5+ */
+		 
+			return container;			
+		},
+						
 		_createRadioButtonElement: function() {
-			// TODO: to be implemented
-			return this._createDefaultContent();
+				var container = this._createInputContainer( new InputCreateParameters() );
+				
+				var input = document.createElement('input');
+				input.type = 'radio';
+				input.name = this.parseInputName(this.data.fullName);
+				input.id = this.data.fullName;
+				input.value = this.data.fieldValue;
+				input.style.padding = '0';
+				input.style.margin = '0';
+				input.style.border = '1px solid #E6E6E6 ';
+				input.style.display = 'block';
+				input.style.boxSizing = 'border-box';
+				input.style.fontSize = '9px';
+				input.style.fontWeight = 'normal';
+				
+				this._setDimension(input);
+				
+				this._applyActionScripts(input);
+				
+				container.appendChild(input);
+				return container;
 		},
 
 		_createPushButtonElement: function() {
-			// TODO: to be implemented
-			return this._createDefaultContent();
+			var control = document.createElement('button');
+			
+			control.id = this.parseInputName(this.data.fullName);
+			control.name = this.parseInputName(this.data.fullName);
+			control.innerHTML = this.data.label;
+			this._setDimension(control);
+			this._setTextStyle(control);
+			this._applyActionScripts(control);
+			return control;
 		},
 
 		_createCheckboxElement: function() {
-			// TODO: to be implemented
-			return this._createDefaultContent();
+												
+			var container = this._createInputContainer( new InputCreateParameters() );														
+			var input = document.createElement('input');
+			input.type = 'checkbox';
+			input.name = this.data.fullName;
+			input.id = this.parseInputName(this.data.fullName);
+			input.value = this.data.fieldValue;
+			
+			input.style.margin = '0';
+			input.style.border = '1px solid #E6E6E6 ';
+			input.style.display = 'block';
+			input.style.boxSizing = 'border-box';
+			input.style.fontSize = '9px';
+			input.style.fontWeight = 'normal';
+			
+			this._setDimension(input);
+			
+			this._applyActionScripts(input);
+			
+			container.appendChild(input);
+			return container;
 		},
 
 		_createDropdownElement: function() {
-			// TODO: to be implemented
-			return this._createDefaultContent();
+			
+			var control = document.createElement('input');
+			control.type = 'text';
+			
+			var datalist = document.createElement('datalist');
+			datalist.id = this.data.fullName + '.datalist';
+			
+			control.id = this.data.fullName;
+			control.setAttribute('list', datalist.id);
+			
+			if (this.data.multiSelect) {
+				control.multiple = true;
+			}
+			this._setDimension(control);
+			this._setTextStyle(control);
+			if (this.data.options) {
+				for (var key in this.data.options) {
+					var optionElement = document.createElement('option');
+					var option = this.data.options[key];
+					optionElement.value = option.value;
+					optionElement.text = option.text;
+					optionElement.selected = option.selected || false;
+					datalist.appendChild(optionElement);
+				}
+			}
+			control.appendChild(datalist);
+			if (this.data.readOnly) {
+				control.disabled = 'disabled';
+				control.style.cursor = "not-allowed";
+			}
+
+			// execute any action javascript
+			this._applyActionScripts(control);
+
+			return control;
+		},
+		
+		_scriptMap: [],
+		
+		_createSignatureElement: function() {
+			var control = document.createElement('div');
+			var image = document.createElement('img');
+			var button = document.createElement('button');
+
+			this._setDimension(control);
+			this._setDimension(image);
+			image.id = this.data.fullName;
+			image.style.display = 'none';
+			this.signatureImage = image;
+			control.appendChild(image);
+			button.innerHTML = 'Click here to sign';
+			button.addEventListener('click', function() {
+				// use signature pad to sign
+				SignaturePrompt.onSave = this._handleSignatureSave.bind(this);
+				SignaturePrompt.open();
+			}.bind(this));
+			this.signatureButton = button;
+			control.appendChild(button);
+
+			this._applyActionScripts(control);
+
+			return control;
 		},
 
+		_handleSignatureSave: function(dataUrl) {
+			this.signatureImage.src = dataUrl;
+			this.signatureImage.style.display = 'block';
+			this.signatureButton.style.display = 'none';
+		},
+
+		_applyActionScripts: function(element) {
+			
+			if(element === undefined){
+				return;
+			}
+			// Create a script node for this control
+			 var scriptId = element.id + '_js';
+			 var node = document.getElementById(scriptId) || document.createElement('script');
+			 node.type = "text/javascript";
+			 node.id = scriptId; // some arbitrary identifier to make it easy to find
+			 var hasScript = false;
+			
+			if(this.data.A && this.data.A.JS) {
+				 hasScript = true;
+				 node.text += "document.querySelector(\"[id='" + element.id + "']\").addEventListener('click', function(){ " + this.data.A.JS + "; onStyleChanged()}, false);";
+				// element.addEventListener('click', function() {
+				// 	eval(this.data.A.JS);
+				// }.bind(this));
+			}
+
+			if (this.data.AA) {
+				
+				// the function onStyleChanged() is added to the page when the document is rendered.
+				  
+				if(this.data.AA.Fo && this.data.AA.Fo.JS) {
+					hasScript = true;
+					node.text += "document.querySelector(\"[id='" + element.id + "']\").addEventListener('focus', function(){   " + this.data.AA.Fo.JS + "; onStyleChanged()}, false);";
+					// element.addEventListener('focus', function() {
+					// 	eval(this.data.AA.Fo.JS);
+					// }.bind(this));
+				}
+				if(this.data.AA.Bl && this.data.AA.Bl.JS) {
+					hasScript = true;
+					node.text += "document.querySelector(\"[id='" + element.id + "']\").addEventListener('blur', function(){ " + this.data.AA.Bl.JS + "; onStyleChanged()}, false);";
+					// element.addEventListener('blur', function() {
+					// 	eval(this.data.AA.Bl.JS);
+					// }.bind(this));
+				}
+				if(this.data.AA && this.data.AA.V && this.data.AA.V.JS) {
+					hasScript = true;
+					node.text += "document.querySelector(\"[id='" + element.id + "']\").addEventListener('change', function(){ " + this.data.AA.V.JS + "; onStyleChanged()}, false);";
+					// element.addEventListener('change', function() {
+					// 	eval(this.data.AA.V.JS);
+					// }.bind(this));
+				}
+				
+			}
+	
+			if(hasScript){
+					this._scriptMap.push(node);
+				}
+		},
+		
+		sdCommonScriptID: 'sdCommonScripts',
+		
+		_injectCommonScripts: function(){
+			
+			if(document.getElementById(this.sdCommonScriptID)) return;						
+			
+			var node = document.createElement('script');
+			node.innerText += 'window.getField = function(el){return document.getElementById(el);}; '; 
+			node.innerText += "window.onStyleChanged = function(){ var inputs = document.querySelectorAll('input[type=\"text\"]'); for(var i=0; i< inputs.length; i++){   var input = inputs[i]; if(!input.parentElement) continue; input.parentElement.style.backgroundColor = (input.style.display == 'none') ? '#ffffff' : 'transparent'; } ; };";
+			
+			node.id = this.sdCommonScriptID;
+			document.head.appendChild(node);
+		},
+		
 		_setDimension: function(element) {
 			element.style.width = '100%';
 			element.style.height = '100%';
+			element.style.padding = '0';
+			element.style.margin = '0';
+			element.style.display = 'block';
+			element.style.boxSizing = 'border-box';
 		},
 
 		/**
@@ -921,7 +1191,10 @@ var AnnotationLayer = (function AnnotationLayerClosure() {
 		 */
 		render: function AnnotationLayer_render(parameters) {
 			var annotationElementFactory = new AnnotationElementFactory();
-
+			
+			// Array for gathering script nodes built durrent widget annotation construction
+			var scriptMap = [];
+			
 			for (var i = 0, ii = parameters.annotations.length; i < ii; i++) {
 				var data = parameters.annotations[i];
 				if (!data) {
@@ -936,11 +1209,40 @@ var AnnotationLayer = (function AnnotationLayerClosure() {
 					linkService: parameters.linkService,
 					downloadManager: parameters.downloadManager
 				};
+				
 				var element = annotationElementFactory.create(properties);
 				if (element.isRenderable) {
-					parameters.div.appendChild(element.render());
+					
+					//debugger;
+					var node = element.render();
+					if(node.childNodes && node.childNodes.length == 1){
+						var input = node.childNodes[0].childNodes[0];
+						if(input){
+					//		debugger;
+							// input.junk = 'test';
+							// input.addEventListener('DOMAttrModified', function(e){
+							// 	if (e.attrName === 'style') {
+							// 		console.log('prevValue: ' + e.prevValue, 'newValue: ' + e.newValue);
+							// 	}
+							// }, false);
+						}
+					}
+					parameters.div.appendChild(node);
+				}
+				
+				// Collect the scripts that were build while building the widget annotations
+				if(element._scriptMap){
+					for(var j=0; j< element._scriptMap.length; j++){
+						scriptMap.push(element._scriptMap[j])						
+					}
 				}
 			}
+			
+			// Inject the scripts into the DOM
+			for(var i=0; i< scriptMap.length; i++){
+					document.head.appendChild(scriptMap[i]);
+				}
+      
 		},
 
 		/**

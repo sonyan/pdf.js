@@ -1939,3 +1939,9 @@ html[dir='rtl'] #documentPropertiesOverlay .row > * {
     display: none;
   }
 }
+
+.signature-pad {
+  background-color: #fff;
+  border-radius: 5px;
+  cursor: default;
+}

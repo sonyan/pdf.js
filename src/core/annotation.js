@@ -170,9 +170,6 @@ var Annotation = (function AnnotationClosure() {
 
   function Annotation(params) {
     var dict = params.dict;
-    var actionProperty;
-    var jsFlateStream;
-    var jsString;
 
     this.setFlags(dict.get('F'));
     this.setRectangle(dict.get('Rect'));
@@ -191,21 +188,211 @@ var Annotation = (function AnnotationClosure() {
     this.data.hasAppearance = !!this.appearance;
 
     // include action dictionary in annotation if exist
-    actionProperty = dict.get('A');
-    if(actionProperty) {
+    var JS;
+    var action = dict.get('A');
+    if(action) {
       this.data.A = {
-        S: actionProperty.get('S').name
+        S: action.get('S').name
       };
-      if(actionProperty.has('T')) {
-        this.data.A.T = actionProperty.get('T');
+      if(action.has('T')) {
+        this.data.A.T = action.get('T');
       }
-      jsFlateStream = actionProperty.get('JS');
-      if(jsFlateStream) {
-        jsString = sharedUtil.stringToPDFString(sharedUtil.bytesToString(jsFlateStream.getBytes()));
-        this.data.A.JS = jsString;
+      JS = action.get('JS');
+      if(JS) {
+        this.data.A.JS = convertJS(JS, this.data.id);
       }
     }
-    console.log(this.data);
+
+    var additionalActions = dict.get('AA');
+    var Fo; // annotation receives input focus
+    var Bl; // annotation loses input focus
+    var K; // user modifies a character in a text field or combo box or modifies the selection in a scrollable list box
+    var V; // run javascript when field value is changed
+    var C; // run custom calculation script;
+    if(additionalActions) {
+      this.data.AA = {};
+      if(additionalActions.has('Fo')) {
+        Fo = additionalActions.get('Fo');
+        this.data.AA.Fo = {
+          S: Fo.get('S').name
+        };
+        if(Fo.has('JS')) {
+          this.data.AA.Fo.JS = convertJS(Fo.get('JS'), this.data.id);
+        }
+      }
+      if(additionalActions.has('Bl')) {
+        Bl = additionalActions.get('Bl');
+        this.data.AA.Bl = {
+          S: Bl.get('S').name
+        };
+        if(Bl.has('JS')) {
+          this.data.AA.Bl.JS = convertJS(Bl.get('JS'), this.data.id);
+        }
+      }
+      if(additionalActions.has('K')) {
+        K = additionalActions.get('K');
+        this.data.AA.K = {
+          S: K.get('S').name
+        };
+        if(K.has('JS')) {
+          this.data.AA.K.JS = convertJS(K.get('JS'), this.data.id);
+        }
+      }
+      if(additionalActions.has('V')) {
+        V = additionalActions.get('V');
+        this.data.AA.V = {
+          S: V.get('S').name
+        };
+        if(V.has('JS')) {
+          this.data.AA.V.JS = convertJS(V.get('JS'), this.data.id);
+        }
+      }
+      if(additionalActions.has('C')) {
+        C = additionalActions.get('C');
+        this.data.AA.C = {
+          S: C.get('S').name
+        };
+        if(C.has('JS')) {
+          this.data.AA.C.JS = convertJS(C.get('JS'), this.data.id);
+        }
+      }
+    }
+
+    /**
+     * Convert Acrobat JavaScript to browser compatible JavaScript
+     */
+    function convertJS(str, annotationId) {
+      if (typeof str !== 'string') {
+        str = sharedUtil.bytesToString(str.getBytes());
+      }
+      var newStr = '';
+      newStr += 'try {';
+      str = replaceGetField(str);
+      str = replaceTextSize(str);
+      str = replaceValueYes(str);
+      str = replaceValueNo(str);
+      str = replaceDisplayHidden(str);
+      str = replaceDisplayVisible(str);
+      str = replaceAlert(str);
+      str = replaceFillColorRGB(str);
+      str = replaceFillColorT(str);
+      str = replaceRequired(str);
+      str = replaceSetFocus(str);
+      newStr += str;
+      newStr += '} catch(ex) {console.log("Error executing javascript annotation for ' + annotationId + '"); console.log("Error message: " + ex)}';
+      //console.log(newStr);
+      return newStr;
+    }
+
+    // Replace the getField Property
+    function replaceGetField(str) {
+      var regexp = /(getField\(\"|this\.getField\(\")([A-Za-z0-9_\-\.\s]*)("\))/g;
+      return str.replace(regexp, replace);
+
+      function replace(match, p1, p2, p3) {
+        return 'document.querySelector("[name=\'' + p2.trim() + '\']\")';
+      }
+    }
+
+    // Replace the .textSize property
+    function replaceTextSize(str) {
+      var regexp = /(\.textSize\s\=\s)([0-9]*)/g;
+      return str.replace(regexp, replace);
+
+      function replace(match, p1, p2) {
+        return '.setAttribute("maxlength", ' + p2 + ')';
+      }
+    }
+
+    // Replace the .value=="Yes"
+    function replaceValueYes(str) {
+      var regexp = /\.value\s*==\s*\"Yes\"/g;
+      return str.replace(regexp, replace);
+
+      function replace(match) {
+        return '.checked === true';
+      }
+    }
+
+    // Replace the .value=="No"
+    function replaceValueNo(str) {
+      var regexp = /\.value\s*==\s*\"No\"/g;
+      return str.replace(regexp, replace);
+
+      function replace(match) {
+        return '.checked === false';
+      }
+    }
+
+    // Replace .display = display.hidden;
+    function replaceDisplayHidden(str) {
+      var regexp = /\.display\s*\=\s*display\.hidden/g;
+      return str.replace(regexp, replace);
+
+      function replace(match) {
+        return '.style.display = "none"';
+      }
+    }
+
+    // Replace .display = display.visible;
+    function replaceDisplayVisible(str) {
+      var regexp = /\.display\s*\=\s*display\.visible/g;
+      return str.replace(regexp, replace);
+
+      function replace(match) {
+        return '.style.display = "block"';
+      }
+    }
+
+    // Replace app.alert
+    function replaceAlert(str) {
+      var regexp = /app\.alert/g;
+      return str.replace(regexp, replace);
+
+      function replace(match) {
+        return 'window.alert';
+      }
+    }
+
+    // Replace [field].fillColor = ['RGB'...]
+    function replaceFillColorRGB(str) {
+      var regexp = /(fillColor\s*\=\s*\[\')(RGB)\'\,\s*([0-9\.]+)\,\s*([0-9\.]+)\,\s*([0-9\.]+)\]/g;
+      return str.replace(regexp, replace);
+
+      function replace(match, p1, p2, p3, p4, p5) {
+        return 'style["background-color"] = rgb(' + p3 + ', ' + p4 + ', ' + p5 + ')';
+      }
+    }
+
+    // Replace [field].fillColor = ['T']
+    function replaceFillColorT(str) {
+      var regexp = /fillColor\s*\=\s*\[\'T\'\]/g;
+      return str.replace(regexp, replace);
+
+      function replace(match) {
+        return 'style["background-color"] = rgba(0,0,0,0)';
+      }
+    }
+
+    // Replace [field].required = true/false
+    function replaceRequired(str) {
+      var regexp = /\.required\s*\=\s*(true|false)/g;
+      return str.replace(regexp, replace);
+
+      function replace(match, p1) {
+        return '.setAttribute("required", ' + p1 + ')';
+      }
+    }
+
+    // Replace [field].setFocus()
+    function replaceSetFocus(str) {
+      var regexp = /\.setFocus\(\)/g;
+      return str.replace(regexp, replace);
+
+      function replace(match) {
+        return '.focus()';
+      }
+    }
   }
 
   Annotation.prototype = {
@@ -604,11 +791,13 @@ var WidgetAnnotation = (function WidgetAnnotationClosure() {
 
     var dict = params.dict;
     var data = this.data;
-
-    //data.action = dict.get('A');
+    var fieldValue = Util.getInheritableProperty(dict, 'V');
+    if(Array.isArray(fieldValue)) {
+      data.fieldValue = fieldValue.join(',');
+    } else {
+      data.fieldValue = stringToPDFString(fieldValue || '');
+    }
     data.annotationType = AnnotationType.WIDGET;
-    data.fieldValue = stringToPDFString(
-      Util.getInheritableProperty(dict, 'V') || '');
     data.alternativeText = stringToPDFString(dict.get('TU') || '');
     data.defaultAppearance = Util.getInheritableProperty(dict, 'DA') || '';
     var fieldType = Util.getInheritableProperty(dict, 'FT');
@@ -616,10 +805,213 @@ var WidgetAnnotation = (function WidgetAnnotationClosure() {
     data.fieldFlags = Util.getInheritableProperty(dict, 'Ff') || 0;
     this.fieldResources = Util.getInheritableProperty(dict, 'DR') || Dict.empty;
 
-    // Hide unsupported Widget signatures.
+    // Widget signatures.
     if (data.fieldType === 'Sig') {
-      warn('unimplemented annotation type: Widget signature');
-      this.setFlags(AnnotationFlag.HIDDEN);
+      
+    }
+
+    // additional entries specific to form fields
+    function setButtonProperties() {
+      var MK = dict.get('MK');
+      data.label = MK.get('CA') || '';
+    }
+    function setCheckProperties() {
+      try {
+        // What is the default value?
+        var defaultValue = dict.get('V') ? dict.get('V').name : 'Off';
+        
+        // Method 1 : Checkboxes depend on export_value and not 'Yes' to tell if they are checked, this comes from appearance options
+        var appearanceState = dict.get('AP');
+        if (appearanceState && isDict(appearanceState)) {
+          var appearances = appearanceState.get('N');
+          if (appearances && isDict(appearances)) {
+            data.options = [];
+            for (var key in appearances.map) {
+              // Make sure Off is always the first state (by unshifting)
+              if (key=='Off') data.options.unshift(key);
+              else data.options.push(key);
+            }
+            if (data.options.length==1) data.options.unshift('Off'); { // Certain files only contain the on appearance
+              data.selected = (data.options.length>=2) ? (defaultValue==data.options[1]): false;
+            }
+          }
+        }
+
+        // Method 2 : If the appearances failed, there may be an /AS key with the export_value (if selected)
+        if (!data.options) {
+          var as = dict.get('AS');
+          if (as && as.name!='Off') {
+            data.selected = (defaultValue==as.name);
+            data.options = ['Off',as.name];
+          }
+        }
+                
+        // Method 3 : Give up, default back to the old method if the others didn't work (unlikely)
+        if (!data.options) {
+          data.selected = (defaultValue!='Off');
+          data.options = ['Off','Yes'];
+        }
+
+      } catch(e) {
+        data.selected = false;
+        data.options = ['Off','Yes'];
+      }
+    }
+
+    function setChoiceProperties() {
+      data.allowTextEntry = data.fieldFlags === 393216 ? true : false; // bit position 18 & 19, combo box with editable text box
+      data.multiSelect = data.fieldFlags === 2097152 ? true : false; // bit position 22, multiple select list box
+      try {
+        data.options = {};
+        var opt = dict.get('Opt'); // get the dictionary options
+        var selectedIndexes;
+        for (var key in opt) {
+          if (opt.hasOwnProperty(key)) {
+            if (typeof(opt[key]) == 'object') {
+              data.options[key] = {
+                'value': opt[key][0],
+                'text': opt[key][1]
+              };
+            } else {
+              data.options[key] = {
+                'value': opt[key],
+                'text': opt[key]
+              };
+            }
+          }
+        }
+
+        // determine selections
+        selectedIndexes = dict.get('I');
+        selectedIndexes.forEach(function(selectedIndex) {
+          data.options[selectedIndex].selected = true;
+        });
+      } catch(e) {
+        data.options=false;
+      }
+    }
+
+    function setRadioProperties () {
+      try {
+        // What is the default value?
+        var defaultValue = dict.get('AS') ? dict.get('AS').name : 'Off';
+                
+        // The value for the radio, should be the second key in the appearances map
+        var appearanceState = dict.get('AP');
+        if (appearanceState && isDict(appearanceState)) {
+          var appearances = appearanceState.get('N');
+          if (appearances && isDict(appearances)) {
+            data.options = [];
+            for (var key in appearances.map) {
+              // Make sure Off is always the first state (by unshifting)
+              if (key=='Off') data.options.unshift(key);
+              else data.options.push(key);
+            }
+            if (data.options.length==1) data.options.unshift('Off'); { // Certain files only contain the on appearance
+              data.selected = (data.options.length>=2) ? (defaultValue==data.options[1]): false;
+            }
+          }
+        }
+      }
+      catch(e) {
+        // This shouldn't happen, but if it was to somehow occur, we need a somewhat unique value for Yes
+        data.options = ['Off','Yes_'+Math.round(Math.random() * 1000)];
+        data.selected = false;
+      }
+    }
+
+    function setTextProperties() {
+      data.multiLine = data.fieldFlags & 4096 ? true : false;
+      data.password = data.fieldFlags & 8192 ? true : false;
+      data.fileUpload = data.fieldFlags & 1048576 ? true : false;
+      data.richText = stringToPDFString(Util.getInheritableProperty(dict,'RV') || '');
+      data.maxlen = stringToPDFString(Util.getInheritableProperty(dict,'MaxLen') || '');
+      data.textAlignment = Util.getInheritableProperty(dict, 'Q');
+    }
+
+    function setSignatureProperties() {
+      // get Lock dictionary
+      var lock = Util.getInheritableProperty(dict, 'Lock');
+      if(lock) {
+        data.Lock = {
+          Action: lock.get('Action').name
+        };
+
+        if(lock.has('Type')) {
+          data.Lock.Type = lock.get('Type').name;
+        }
+        if(data.Lock.Action !== 'All') {
+          data.Lock.Fields = lock.get('Fields');
+        }
+      }
+    }
+
+    var regularExp = /\/([\w]+) ([\d]+(\.[\d]+)?) Tf/;
+    var fontResults;
+    if (fontResults = regularExp.exec(data.defaultAppearance)) {
+      if (fontResults[2] > 0) {
+        data.fontSize = fontResults[2];
+        data.fontFaceIndex = fontResults[1];
+      }
+    } else {
+      data.fontSize = false;
+      data.fontFaceIndex = false;
+    }
+    data.readOnly = data.fieldFlags & 1;
+    data.required = data.fieldFlags & 2;
+    data.noExport = data.fieldFlags & 4;
+    data.originalName = stringToPDFString(Util.getInheritableProperty(dict,'T') || '');
+
+    switch(data.fieldType) {
+      case 'Tx':
+        if (Util.getInheritableProperty(dict, 'PMD')) {
+          data.paperMetaData = true;
+          break; // PaperMetaData means this is a qrcode, datamatrix or similar, ignore
+        }
+        data.formElementType ='TEXT'; //text input
+        break;
+      case 'Btn':
+        if ((data.fieldFlags & 32768)) {
+          data.formElementType ='RADIO_BUTTON'; //radio button
+        }
+        else if (data.fieldFlags & 65536) {
+          data.formElementType ='PUSH_BUTTON'; //push button
+        }
+        else {
+          data.formElementType ='CHECK_BOX';  //checkbox
+        }
+        break;
+      case 'Ch': // choice
+        data.formElementType ='DROP_DOWN'; //drop down
+        break;
+      case 'Sig':
+        data.formElementType = 'SIGNATURE';
+        break;
+    }
+
+    switch(data.formElementType) {
+      case 'PUSH_BUTTON':
+        setButtonProperties();
+        break;
+      case 'CHECK_BOX':
+        setCheckProperties();
+        break;
+      case 'RADIO_BUTTON':
+        setRadioProperties();
+        break;
+      case 'DROP_DOWN':
+        setChoiceProperties();
+        break;
+      case 'TEXT':
+        setTextProperties();
+        break;
+      case 'SIGNATURE':
+        setSignatureProperties();
+        break;
+    }
+
+    if (typeof(this.data.formElementType)!=='undefined' && !this.hasFlag(AnnotationFlag.HIDDEN)) {
+      data.hiddenForForms = true;   // Hidden by the forms rendering, but shown for a "print" intent
     }
 
     // Building the full field name by collecting the field and

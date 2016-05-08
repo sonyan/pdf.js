@@ -25,7 +25,9 @@
 
 'use strict';
 
-var DEFAULT_URL = 'VNYRRESALE_RadioButtonReg.pdf';
+//var DEFAULT_URL = 'VNYRRESALE_RadioButtonReg.pdf';
+//var DEFAULT_URL = 'CSDEPMECONTRACTOR.pdf';
+var DEFAULT_URL = 'CWIEEXEMPTION.pdf';
 var DEFAULT_SCALE_DELTA = 1.1;
 var MIN_SCALE = 0.25;
 var MAX_SCALE = 10.0;
@@ -86,6 +88,8 @@ var mozL10n = document.mozL10n || document.webL10n;
 //#include pdf_sidebar.js
 //#include pdf_outline_viewer.js
 //#include pdf_attachment_viewer.js
+//#include signature_pad.js
+//#include signature_prompt.js
 
 var PDFViewerApplication = {
   initialBookmark: document.location.hash.substring(1),
@@ -248,6 +252,14 @@ var PDFViewerApplication = {
       passwordText: document.getElementById('passwordText'),
       passwordSubmit: document.getElementById('passwordSubmit'),
       passwordCancel: document.getElementById('passwordCancel')
+    });
+
+    SignaturePrompt.initialize({
+      overlayName: 'signaturePadOverlay',
+      canvas: document.getElementById('signatureArea'),
+      cancelButton: document.getElementById('btnSignatureCancel'),
+      clearButton: document.getElementById('btnSignatureClear'),
+      saveButton: document.getElementById('btnSignatureSave')
     });
 
     this.pdfOutlineViewer = new PDFOutlineViewer({
@@ -1239,6 +1251,103 @@ var PDFViewerApplication = {
       return;
     }
     this.pdfPresentationMode.mouseScroll(delta);
+  },
+
+  /**
+   * Trigger OpenAction on page.
+   * @param {number} pageNumber - The page number of the currently displayed page.
+   * @returns {Promise} - The promise of OpenAction trigger task.
+   */
+  triggerOpenActionOnPage: function pdfViewTriggerOpenAction(pageNumber) {
+    var self = this;
+
+    if(!this.pdfDocument) {
+      return;
+    }
+
+    return new Promise(function(resolve, reject) {
+      self.pdfDocument.getPageActions(pageNumber).then(
+        function(actions) {
+          if(actions.O && actions.O.JS) {
+            eval(actions.O.JS);
+          }
+          resolve();
+        },
+        function(error) {
+          reject(error);
+        }
+      );
+    });
+  },
+
+  /**
+   * Trigger CloseAction on page.
+   * @param {number} pageNumber - The page number of closing page.
+   * @returns {Promise} - The promise of CloseAction trigger task.
+   */
+  triggerCloseActionOnPage: function pdfViewTriggerCloseAction(pageNumber) {
+    var self = this;
+
+    if(!this.pdfDocument) {
+      return;
+    }
+
+    return new Promise(function(resolve, reject) {
+      self.pdfDocument.getPageActions(pageNumber).then(
+        function(actions) {
+          if(actions.C && actions.C.JS) {
+            eval(actions.C.JS);
+          }
+          resolve();
+        },
+        function(error) {
+          reject(error);
+        }
+      );
+    });
+  },
+
+  /**
+   * Trigger any CloseAction on closing page then trigger any OpenAction on opened page.
+   * @param {number} toPage - The page number of opened page.
+   * @param {number} fromPage - The page number of closing page.
+   * @returns {Promise} - The promise of CloseAction and OpenAction tasks.
+   */
+  triggerPageActions: function pdfViewTriggerPageActions(toPage, fromPage) {
+    var self = this;
+
+    if(!toPage) {
+      return;
+    }
+
+    return new Promise(function(resolve, reject) {
+      if(fromPage) {
+        self.triggerCloseActionOnPage(fromPage).then(
+          function() {
+            self.triggerOpenActionOnPage(toPage).then(
+              function() {
+                resolve();
+              },
+              function() {
+                reject();
+              }
+            );
+          },
+          function() {
+            reject();
+          }
+        );
+      } else {
+        self.triggerOpenActionOnPage(toPage).then(
+          function() {
+            resolve();
+          },
+          function() {
+            reject();
+          }
+        );
+      }
+    });
   }
 };
 //#if GENERIC
@@ -1264,7 +1373,7 @@ window.PDFView = PDFViewerApplication; // obsolete name, using it as an alias
 
 //#if GENERIC
 var HOSTED_VIEWER_ORIGINS = ['null',
-  'http://mozilla.github.io', 'https://mozilla.github.io'];
+  'http://mozilla.github.io', 'https://mozilla.github.io', 'http://www.adobe.com'];
 function validateFileURL(file) {
   try {
     var viewerOrigin = new URL(window.location.href).origin || 'null';
@@ -1845,12 +1954,22 @@ window.addEventListener('scalechange', function scalechange(evt) {
 
 window.addEventListener('pagechange', function pagechange(evt) {
   var page = evt.pageNumber;
+
   if (evt.previousPageNumber !== page) {
     document.getElementById('pageNumber').value = page;
 
     if (PDFViewerApplication.pdfSidebar.isThumbnailViewVisible) {
       PDFViewerApplication.pdfThumbnailViewer.scrollThumbnailIntoView(page);
     }
+
+    // trigger any available page action
+    PDFViewerApplication.triggerPageActions(page, evt.previousPageNumber).then(
+      function() { },
+      function(err) { console.error('failed to trigger some page actions. ' + err); }
+    );
+  } else {
+    // initial page load
+    Promise.resolve(PDFViewerApplication.triggerOpenActionOnPage(page));
   }
   var numPages = PDFViewerApplication.pagesCount;
 

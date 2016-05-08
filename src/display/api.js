@@ -26,7 +26,7 @@
       require('./canvas.js'), require('./metadata.js'),
       require('../shared/global.js'));
   } else {
-    factory((root.pdfjsDisplayAPI = {}), root.pdfjsSharedUtil,
+    factory((root.pdfjsDisplayAPI = {}), root.pdfjsSharedMediator, root.pdfjsSharedUtil,
       root.pdfjsDisplayFontLoader, root.pdfjsDisplayCanvas,
       root.pdfjsDisplayMetadata, root.pdfjsSharedGlobal);
   }
@@ -665,6 +665,14 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
      */
     getPage: function PDFDocumentProxy_getPage(pageNumber) {
       return this.transport.getPage(pageNumber);
+    },
+    /**
+     * @param {number} pageNumber The page number to get. The first page is 1.
+     * @return {Promise} A promise that is resolved with a {@link PDFPageProxy}
+     * object.
+     */
+    getPageActions: function PDFDocumentProxy_getPage(pageNumber) {
+      return this.transport.getPageActions(pageNumber);
     },
     /**
      * @param {{num: number, gen: number}} ref The page reference. Must have
@@ -1810,6 +1818,14 @@ var WorkerTransport = (function WorkerTransportClosure() {
       }.bind(this));
       this.pagePromises[pageIndex] = promise;
       return promise;
+    },
+
+    getPageActions: function WorkerTransport_getPageActions(pageNumber) {
+      return this.messageHandler.sendWithPromise('GetPageActions', {
+        pageIndex: pageNumber - 1
+      }).then(function(actions) {
+        return actions;
+      });
     },
 
     getPageIndex: function WorkerTransport_getPageIndexByRef(ref) {

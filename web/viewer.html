@@ -87,6 +87,8 @@ See https://github.com/adobe-type-tools/cmap-resources
     <script src="overlay_manager.js"></script>
     <script src="password_prompt.js"></script>
     <script src="pdf_document_properties.js"></script>
+    <script src="signature_pad.js"></script>
+    <script src="signature_prompt.js"></script>
 <!--#endif-->
 
 <!--#if !MINIFIED -->
@@ -383,6 +385,18 @@ See https://github.com/adobe-type-tools/cmap-resources
             </div>
             <div class="buttonRow">
               <button id="documentPropertiesClose" class="overlayButton"><span data-l10n-id="document_properties_close">Close</span></button>
+            </div>
+          </div>
+        </div>
+        <div id="signaturePadOverlay" class="container hidden">
+          <div class="dialog">
+            <div class="row">
+              <canvas id="signatureArea" width="350" height="140" class="signature-pad"></canvas>
+            </div>
+            <div class="buttonRow">
+              <button id="btnSignatureCancel" class="overlayButton"><span data-l10n-id="signature_cancel">Cancel</span></button>
+              <button id="btnSignatureClear" class="overlayButton"><span data-l10n-id="signature_clear">Clear</span></button>
+              <button id="btnSignatureSave" class="overlayButton"><span data-l10n-id="signature_ok">Save</span></button>
             </div>
           </div>
         </div>
